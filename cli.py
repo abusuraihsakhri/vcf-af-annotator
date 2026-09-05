@@ -8,6 +8,9 @@ Subcommands:
   classify  — Classify a variant by allele frequency
   parse     — Parse and display a VCF record
   batch     — Batch-annotate from CSV
+  audit     — Dispatch an enterprise audit task via the supervisor
+  chat      — Query the air-gapped supervisory assistant
+  verify-audit — Verify the HMAC-SHA256 audit trail integrity
 """
 import argparse
 import json
@@ -66,6 +69,43 @@ def cmd_batch(args):
     print(f"Processed {len(results)} variants -> {args.output}")
 
 
+def cmd_audit(args):
+    """Dispatch an enterprise audit task via the supervisor."""
+    from agents.supervisor import SystemSupervisor
+    from agents.models import SystemTaskPayload
+    supervisor = SystemSupervisor(model_provider="mock")
+    payload = SystemTaskPayload(
+        task_id=args.task_id,
+        target_identifier=args.target_identifier,
+        primary_metric=args.primary_metric,
+        secondary_metric=args.secondary_metric,
+        status_descriptor=args.status_descriptor,
+        is_critical_flag=args.is_critical_flag,
+    )
+    dossier = supervisor.process_task(payload)
+    print(json.dumps(dossier.to_dict(), indent=2, default=str))
+
+
+def cmd_chat(args):
+    """Query the air-gapped supervisory assistant."""
+    from agents.supervisor import SystemSupervisor
+    supervisor = SystemSupervisor(model_provider="mock")
+    query = " ".join(args.query)
+    response = supervisor.query_supervisory_chat(query)
+    print(response)
+
+
+def cmd_verify_audit(args):
+    """Verify the HMAC-SHA256 audit trail integrity."""
+    from agents.base import AuditLogger
+    verified = AuditLogger.verify_integrity()
+    trail_len = len(AuditLogger.get_trail())
+    status = "VALID" if verified else "TAMPERED"
+    print(f"Audit trail: {trail_len} blocks, integrity: {status}")
+    if not verified:
+        sys.exit(1)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog='vcf-af-annotator',
@@ -103,9 +143,34 @@ def main(argv=None):
     p_batch.add_argument('-o', '--output', default='results.csv', help='Output CSV file')
     p_batch.set_defaults(func=cmd_batch)
 
+    # audit
+    p_audit = subparsers.add_parser('audit', help='Dispatch enterprise audit task via supervisor')
+    p_audit.add_argument('--task-id', required=True, help='Task identifier')
+    p_audit.add_argument('--target-identifier', default='SPECIMEN-001', help='Target specimen identifier')
+    p_audit.add_argument('--primary-metric', type=float, default=10.0, help='Primary measurement value')
+    p_audit.add_argument('--secondary-metric', type=float, default=5.0, help='Secondary measurement value')
+    p_audit.add_argument('--status-descriptor', default='NOMINAL', help='Status descriptor')
+    p_audit.add_argument('--is-critical-flag', action='store_true', help='Mark as critical')
+    p_audit.set_defaults(func=cmd_audit)
+
+    # chat
+    p_chat = subparsers.add_parser('chat', help='Query the air-gapped supervisory assistant')
+    p_chat.add_argument('query', nargs='+', help='Query text')
+    p_chat.set_defaults(func=cmd_chat)
+
+    # verify-audit
+    p_verify = subparsers.add_parser('verify-audit', help='Verify HMAC-SHA256 audit trail integrity')
+    p_verify.set_defaults(func=cmd_verify_audit)
+
     args = parser.parse_args(argv)
-    args.func(args)
+    try:
+        args.func(args)
+        return 0
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else 1
+    except Exception:
+        return 1
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

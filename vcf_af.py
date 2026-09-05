@@ -10,6 +10,7 @@ Zero external dependencies — Python stdlib only.
 
 import csv
 import math
+import os
 import re
 import sys
 from typing import Dict, Any, List, Optional, Tuple
@@ -502,10 +503,24 @@ def annotate_vcf_record(record: Dict[str, Any]) -> Dict[str, Any]:
     return result
 
 
+def _validate_filepath(filepath: str) -> str:
+    """Validate filepath for path traversal and null byte injection."""
+    if not filepath:
+        raise ValueError("Filepath must not be empty")
+    if '\x00' in filepath:
+        raise ValueError("Filepath contains null bytes")
+    # Resolve to absolute path and check for traversal attempts
+    normalized = os.path.normpath(filepath)
+    if '..' in normalized.split(os.sep):
+        raise ValueError(f"Path traversal detected in: {filepath}")
+    return normalized
+
+
 def parse_vcf_file(filepath: str) -> List[Dict[str, Any]]:
     """Parse a VCF file and return list of record dicts."""
+    filepath = _validate_filepath(filepath)
     records = []
-    with open(filepath, 'r') as f:
+    with open(filepath, 'r', encoding='utf-8') as f:
         for line in f:
             if line.startswith('#'):
                 continue
@@ -517,6 +532,8 @@ def parse_vcf_file(filepath: str) -> List[Dict[str, Any]]:
 
 def annotate_vcf_file(input_path: str, output_path: str) -> List[Dict[str, Any]]:
     """Annotate an entire VCF file and write results to CSV."""
+    input_path = _validate_filepath(input_path)
+    output_path = _validate_filepath(output_path)
     records = parse_vcf_file(input_path)
     annotations = [annotate_vcf_record(r) for r in records]
 
@@ -535,6 +552,8 @@ def process_batch(input_csv: str, output_csv: str) -> List[Dict[str, Any]]:
 
     Expected columns: CHROM, POS, REF, ALT, AF (or INFO field).
     """
+    input_csv = _validate_filepath(input_csv)
+    output_csv = _validate_filepath(output_csv)
     with open(input_csv, mode='r', encoding='utf-8-sig') as f:
         reader = csv.DictReader(f)
         fieldnames = list(reader.fieldnames or [])

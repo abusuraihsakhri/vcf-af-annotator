@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Tests for VCF Allele Frequency Annotator — 20+ real functional tests."""
+import os
+
 import pytest
 from vcf_af import (
     parse_vcf_line,
@@ -17,6 +19,7 @@ from vcf_af import (
     compare_to_gnomad,
     annotate_vcf_record,
     process_batch,
+    _validate_filepath,
 )
 
 
@@ -270,6 +273,32 @@ class TestFullAnnotation:
         results = process_batch(str(csv_in), str(csv_out))
         assert len(results) == 2
         assert csv_out.exists()
+
+
+# ---------------------------------------------------------------------------
+# Filepath Validation Tests
+# ---------------------------------------------------------------------------
+
+class TestFilepathValidation:
+    def test_valid_filepath(self):
+        result = _validate_filepath("data/sample.vcf")
+        assert result == os.path.normpath("data/sample.vcf")
+
+    def test_empty_filepath_raises(self):
+        with pytest.raises(ValueError, match="empty"):
+            _validate_filepath("")
+
+    def test_null_byte_raises(self):
+        with pytest.raises(ValueError, match="null bytes"):
+            _validate_filepath("file\x00name.vcf")
+
+    def test_path_traversal_raises(self):
+        with pytest.raises(ValueError, match="traversal"):
+            _validate_filepath("../../../etc/passwd")
+
+    def test_path_traversal_with_filename_raises(self):
+        with pytest.raises(ValueError, match="traversal"):
+            _validate_filepath("data/../../../etc/shadow")
 
 
 if __name__ == '__main__':
