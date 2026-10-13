@@ -1,236 +1,162 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vcf Af Annotator — Operations Console</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #090d16;
-            --card: #111827;
-            --border: #1f293d;
-            --accent: #3b82f6;
-            --accent-glow: rgba(59, 130, 246, 0.25);
-            --text: #f3f4f6;
-            --text-muted: #9ca3af;
-            --danger: #ef4444;
-            --warning: #f59e0b;
-            --success: #10b981;
-        }
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            padding: 2rem;
-            min-height: 100vh;
-        }
-        .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid var(--border);
-            padding-bottom: 1.5rem;
-            margin-bottom: 2rem;
-        }
-        .header-title h1 { font-size: 1.6rem; font-weight: 700; color: #fff; }
-        .header-title p { color: var(--text-muted); font-size: 0.9rem; margin-top: 0.25rem; }
-        .badge {
-            display: inline-block;
-            padding: 0.3rem 0.8rem;
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: var(--accent-glow);
-            color: var(--accent);
-            border: 1px solid var(--accent);
-        }
-        .grid {
-            display: grid;
-            grid-template-columns: 1fr 1.2fr;
-            gap: 1.5rem;
-        }
-        .card {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 1.5rem;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-        }
-        .card h2 {
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .form-group { margin-bottom: 1rem; }
-        label { display: block; font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.4rem; }
-        input, select, textarea {
-            width: 100%;
-            padding: 0.65rem 0.9rem;
-            background: #0d1322;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            color: #fff;
-            font-family: inherit;
-            font-size: 0.9rem;
-        }
-        input:focus, textarea:focus { outline: none; border-color: var(--accent); }
-        .btn {
-            background: var(--accent);
-            color: #fff;
-            border: none;
-            padding: 0.7rem 1.4rem;
-            border-radius: 6px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: 0.2s;
-            width: 100%;
-        }
-        .btn:hover { background: #2563eb; }
-        .terminal {
-            background: #060911;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.85rem;
-            color: #10b981;
-            height: 380px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-        .metrics-bar {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 1rem;
-            margin-bottom: 1.5rem;
-        }
-        .metric-box {
-            background: var(--card);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            text-align: center;
-        }
-        .metric-val { font-size: 1.4rem; font-weight: 700; color: #fff; margin-top: 0.25rem; }
-        .metric-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; }
-    </style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>VCF AF Annotator</title>
+  <style>
+    :root { color-scheme: dark; --bg:#0d1422; --panel:#152237; --border:#34445f;
+      --text:#f1f5fb; --muted:#a9bed8; --accent:#80bbff; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text);
+      font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif; }
+    main { max-width:1080px; margin:auto; padding:24px 18px 64px; }
+    h1 { margin:0; font-size:clamp(1.5rem,3vw,2.2rem); }
+    h2 { font-size:1.08rem; margin:0 0 16px; }
+    p { color:var(--muted); margin:8px 0 22px; }
+    .kicker { font-size:.75rem; text-transform:uppercase; letter-spacing:.13em; color:var(--accent); font-weight:700; }
+    .layout { display:grid; gap:18px; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr); }
+    .panel { background:var(--panel); padding:22px; border:1px solid var(--border); border-radius:14px; min-width:0; }
+    label { display:block; font-weight:600; margin:0 0 8px; }
+    textarea { width:100%; min-height:270px; resize:vertical; background:#0b1627;
+      border:1px solid #50617b; color:var(--text); padding:12px; border-radius:9px;
+      font:13px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; }
+    textarea:focus-visible,input:focus-visible,button:focus-visible,a:focus-visible {
+      outline:3px solid var(--accent); outline-offset:3px; }
+    input[type=file] { width:100%; padding:10px; border:1px dashed #768aa8;
+      border-radius:9px; background:#0b1627; margin-bottom:18px; }
+    button { background:var(--accent); color:#071325; border:0; border-radius:8px;
+      padding:11px 16px; font:inherit; font-weight:700; cursor:pointer; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    button.secondary { background:transparent; border:1px solid #8ea3be; color:var(--text); }
+    .actions { display:flex; flex-wrap:wrap; gap:9px; margin-top:12px; }
+    .note { font-size:.83rem; color:var(--muted); margin:10px 0; }
+    .status { padding:12px; background:#0b1627; border:1px solid var(--border);
+      min-height:54px; border-radius:8px; margin-bottom:15px; white-space:pre-wrap; }
+    .status.error { border-color:#ff8888; color:#ffb8b8; }
+    .stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; margin:14px 0; }
+    .stat { background:#0b1627; padding:10px; border-radius:8px; }
+    .stat strong { display:block; font-size:1.45rem; }
+    .stat span { color:var(--muted); font-size:.78rem; }
+    .scroll { overflow:auto; max-height:440px; border:1px solid var(--border); border-radius:8px; }
+    table { border-collapse:collapse; font-size:.83rem; width:100%; }
+    th,td { border-bottom:1px solid var(--border); text-align:left; padding:9px 10px; white-space:nowrap; }
+    thead { position:sticky; top:0; background:#1c2d46; }
+    td.unknown { color:#ffcc89; }
+    [hidden] { display:none!important; }
+    footer { padding-top:22px; color:var(--muted); font-size:.83rem; }
+    a { color:var(--accent); }
+    @media (max-width:800px) { .layout{grid-template-columns:1fr;} main{padding:18px 12px 42px;} .panel{padding:16px;} }
+  </style>
 </head>
 <body>
-
-    <div class="header">
-        <div class="header-title">
-            <h1>Vcf Af Annotator</h1>
-            <p>Domain: Clinical & Cryptographic AI | Standard: CAP / CLSI / NIST Standards | LabMind-Atlas Architecture</p>
-        </div>
-        <div>
-            <span class="badge">Air-Gapped Active</span>
-            <span class="badge" style="background: rgba(16,185,129,0.2); color: #10b981; border-color: #10b981;">Zero-PHI Guard Active</span>
-        </div>
-    </div>
-
-    <div class="metrics-bar">
-        <div class="metric-box">
-            <div class="metric-label">System Status</div>
-            <div class="metric-val" style="color: var(--success);" id="m-status">OPTIMAL</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Tasks Processed</div>
-            <div class="metric-val" id="m-tasks">142</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">Audit Blocks Signed</div>
-            <div class="metric-val" id="m-audit">142</div>
-        </div>
-        <div class="metric-box">
-            <div class="metric-label">PHI Interceptions</div>
-            <div class="metric-val" style="color: var(--accent);" id="m-phi">0</div>
-        </div>
-    </div>
-
-    <div class="grid">
-        <div class="card">
-            <h2>⚙️ Dispatch Distributed Component Audit</h2>
-            <div class="form-group">
-                <label>Task / Sample ID</label>
-                <input type="text" id="task_id" value="TASK-2026-LIVE-01">
-            </div>
-            <div class="form-group">
-                <label>Target Identifier</label>
-                <input type="text" id="target_id" value="SPECIMEN-ALPHA-77">
-            </div>
-            <div class="form-group">
-                <label>Primary Measurement / Value</label>
-                <input type="number" id="primary_metric" value="29.4" step="0.1">
-            </div>
-            <div class="form-group">
-                <label>Secondary Metric / Kinetic Index</label>
-                <input type="number" id="secondary_metric" value="14.8" step="0.1">
-            </div>
-            <div class="form-group">
-                <label>Status / Phenotype Descriptor</label>
-                <input type="text" id="status_descriptor" value="DISCORDANT_ANOMALY">
-            </div>
-            <div class="form-group">
-                <label><input type="checkbox" id="is_critical" checked> Trigger Emergency / Critical Flag</label>
-            </div>
-            <button class="btn" onclick="runAudit()">Execute Distributed Component Audit</button>
-        </div>
-
-        <div class="card">
-            <h2>📊 Real-Time Consensus Dossier & Audit Log</h2>
-            <div class="terminal" id="outputConsole">// Vcf Af Annotator Operations Console Ready
-// Connection established with Air-Gapped Supervisor
-// Cryptographic HMAC-SHA256 audit ledger loaded.
-// Ready for live task payload dispatch...</div>
-        </div>
-    </div>
-
-    <script>
-        async function runAudit() {
-            const consoleEl = document.getElementById('outputConsole');
-            consoleEl.innerText = "// Dispatching task across specialized workers...
-// Invoking InvariantQCWorker, SafetyEscalationWorker, ProtocolWorker...";
-
-            const payload = {
-                task_id: document.getElementById('task_id').value,
-                target_identifier: document.getElementById('target_id').value,
-                primary_metric: parseFloat(document.getElementById('primary_metric').value),
-                secondary_metric: parseFloat(document.getElementById('secondary_metric').value),
-                status_descriptor: document.getElementById('status_descriptor').value,
-                is_critical_flag: document.getElementById('is_critical').checked
-            };
-
-            try {
-                const res = await fetch('/api/audit', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-                const data = await res.json();
-                consoleEl.innerText = JSON.stringify(data, null, 2);
-                document.getElementById('m-tasks').innerText = parseInt(document.getElementById('m-tasks').innerText) + 1;
-                document.getElementById('m-audit').innerText = parseInt(document.getElementById('m-audit').innerText) + 1;
-            } catch (err) {
-                consoleEl.innerText = "// Offline / Simulation Output:\n" + JSON.stringify({
-                    dossier_id: "DOSSIER-SIM-" + Math.floor(Math.random()*10000),
-                    system: "vcf-af-annotator",
-                    domain: "Clinical & Cryptographic AI",
-                    task_id: payload.task_id,
-                    overall_urgency: payload.is_critical_flag ? "CRITICAL_STAT_PANIC" : "ELEVATED_RISK",
-                    integrity_status: "DISCORDANT_ANOMALY",
-                    alerts: [
-                        { worker: "InvariantQCWorker", alert: "Primary metric exceeds upper reference bound" },
-                        { worker: "SafetyEscalationWorker", alert: "Critical emergency interlock flag active" }
-                    ],
-                    audit_hash: "HMAC_SHA256_e83f9a72b941d6c381f9"
-                }, null, 2);
-            }
+<main>
+  <header>
+    <div class="kicker">Genomic utilities / local processing</div>
+    <h1>VCF Allele Frequency Annotator</h1>
+    <p>Extract INFO/AF or estimate frequencies from called genotypes. Split multiallelic records and export results as CSV.</p>
+  </header>
+  <div class="layout">
+    <section class="panel" aria-labelledby="input-title">
+      <h2 id="input-title">Input VCF</h2>
+      <label for="file">Choose a plain-text .vcf file</label>
+      <input id="file" type="file" accept=".vcf,.txt,text/plain">
+      <label for="vcf">Or paste VCF content</label>
+      <textarea id="vcf" spellcheck="false" aria-describedby="input-note" placeholder="##fileformat=VCFv4.2&#10;#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO"></textarea>
+      <div id="input-note" class="note">Up to 10 MB. Plain-text VCF only (not .vcf.gz). All computation stays in your browser; nothing is uploaded or saved remotely.</div>
+      <div class="actions">
+        <button id="annotate" type="button">Annotate variants</button>
+        <button id="example" class="secondary" type="button">Load example</button>
+        <button id="clear" class="secondary" type="button">Clear</button>
+      </div>
+    </section>
+    <section class="panel" aria-labelledby="results-title">
+      <h2 id="results-title">Annotation results</h2>
+      <div id="status" class="status" role="status" aria-live="polite">Load a VCF file or paste content to begin.</div>
+      <div class="stats" aria-label="Annotation summary">
+        <div class="stat"><strong id="variants">0</strong><span>ALT alleles</span></div>
+        <div class="stat"><strong id="with-af">0</strong><span>With frequency</span></div>
+        <div class="stat"><strong id="unknown">0</strong><span>Unknown</span></div>
+      </div>
+      <div class="actions" style="margin-bottom:12px;">
+        <button id="download" disabled type="button">Download CSV</button>
+      </div>
+      <div class="scroll">
+        <table>
+          <thead><tr><th>CHROM</th><th>POS</th><th>REF → ALT</th><th>AF</th><th>Source</th><th>Class</th></tr></thead>
+          <tbody id="preview"><tr><td colspan="6">No results yet.</td></tr></tbody>
+        </table>
+      </div>
+      <p class="note">INFO/AF has priority, followed by genotype (GT) counts. Allelic depth (AD) is a read fraction, not population allele frequency. Missing values remain unknown. HWE testing is available in the Python CLI.</p>
+    </section>
+  </div>
+  <footer>Exploratory analysis only. Values and classifications are not clinical pathogenicity assessments. <a href="https://github.com/abusuraihsakhri/vcf-af-annotator" rel="noopener noreferrer">Source repository</a>.</footer>
+</main>
+<script type="module">
+  import { annotateVCF, toCSV } from "./annotator.mjs";
+  const $ = id => document.getElementById(id);
+  const example = "##fileformat=VCFv4.2\n#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tS1\tS2\nchr1\t12345\trs123\tA\tG\t50\tPASS\tAF=0.045\tGT\t0/1\t1/1\nchr2\t23456\t.\tC\tT,G\t.\tPASS\t.\tGT\t0/2\t1/2\nchr3\t34567\t.\tG\tA\t.\tPASS\t.\tGT\t./.\t./.\n";
+  let rows = null;
+  const reset = () => {
+    rows = null;
+    $("download").disabled = true;
+    $("variants").textContent = $("with-af").textContent = $("unknown").textContent = "0";
+    $("preview").replaceChildren();
+    const tr = document.createElement("tr"), td = document.createElement("td");
+    td.colSpan = 6; td.textContent = "No results yet."; tr.append(td); $("preview").append(tr);
+  };
+  function status(message, error=false) {
+    $("status").textContent = message;
+    $("status").classList.toggle("error", error);
+  }
+  $("file").addEventListener("change", async () => {
+    reset();
+    const file = $("file").files[0];
+    if (!file) return;
+    if (file.size > 10*1024*1024) { status("File exceeds the 10 MB limit.", true); return; }
+    if (/\.gz$/i.test(file.name)) { status("Compressed VCF is not supported in the browser.", true); return; }
+    try { $("vcf").value = await file.text(); status("File loaded. Select Annotate variants."); }
+    catch { status("Could not read file.", true); }
+  });
+  $("example").addEventListener("click", () => {
+    $("file").value = ""; $("vcf").value = example; reset(); status("Example loaded.");
+  });
+  $("clear").addEventListener("click", () => {
+    $("file").value = ""; $("vcf").value = ""; reset(); status("Input cleared.");
+  });
+  $("annotate").addEventListener("click", () => {
+    reset();
+    const input = $("vcf").value;
+    if (new Blob([input]).size > 10*1024*1024) { status("Text exceeds the 10 MB limit.", true); return; }
+    try {
+      rows = annotateVCF(input);
+      $("variants").textContent = String(rows.length);
+      $("with-af").textContent = String(rows.filter(x => x.AF !== null).length);
+      $("unknown").textContent = String(rows.filter(x => x.AF === null).length);
+      const fragment = document.createDocumentFragment();
+      for (const row of rows.slice(0, 100)) {
+        const tr = document.createElement("tr");
+        for (const value of [row.CHROM, row.POS, row.REF + " → " + row.ALT,
+            row.AF === null ? "—" : String(row.AF), row.AF_source, row.category]) {
+          const td = document.createElement("td");
+          td.textContent = value; tr.append(td);
         }
-    </script>
+        fragment.append(tr);
+      }
+      $("preview").replaceChildren(fragment);
+      $("download").disabled = false;
+      status("Annotated " + rows.length + " ALT allele(s)." +
+        (rows.length > 100 ? " Showing first 100; CSV contains all." : ""));
+    } catch (error) { status(error.message, true); }
+  });
+  $("download").addEventListener("click", () => {
+    if (rows === null) return;
+    const url = URL.createObjectURL(new Blob([toCSV(rows)], {type:"text/csv;charset=utf-8"}));
+    const a = document.createElement("a");
+    a.href = url; a.download = "vcf-af-annotations.csv"; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+</script>
 </body>
 </html>
