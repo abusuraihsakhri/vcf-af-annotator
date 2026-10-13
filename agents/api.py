@@ -3,7 +3,7 @@ import os
 import hmac
 from pathlib import Path
 from fastapi import Depends, FastAPI, Header, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from .base import AuditLogger, SecurityException
@@ -14,7 +14,7 @@ supervisor = SystemSupervisor(model_provider="mock")
 app = FastAPI(title="VCF AF Annotator API", version="1.0.0")
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
-app.mount("/web", StaticFiles(directory=str(WEB_DIR)), name="web")
+app.mount("/web", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
 
 
 def require_api_token(x_api_key: str | None = Header(default=None)) -> None:
@@ -31,7 +31,7 @@ class ChatRequest(BaseModel):
 
 @app.get("/")
 def index():
-    return FileResponse(WEB_DIR / "index.html")
+    return RedirectResponse("/web/")
 
 
 @app.get("/health")
