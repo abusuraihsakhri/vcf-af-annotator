@@ -21,40 +21,31 @@ from typing import Dict, Any, List, Optional, Tuple
 # ---------------------------------------------------------------------------
 
 def parse_vcf_line(line: str) -> Optional[Dict[str, Any]]:
-    """Parse a single VCF data line into a dict.
-
-    VCF columns: CHROM POS ID REF ALT QUAL FILTER INFO [FORMAT SAMPLE...]
-    """
+    """Parse one VCF data line and retain all sample genotypes."""
     line = line.strip()
     if not line or line.startswith('#'):
         return None
-
     fields = line.split('\t')
     if len(fields) < 8:
         return None
-
-    record = {
-        'CHROM': fields[0],
-        'POS': int(fields[1]),
-        'ID': fields[2],
-        'REF': fields[3],
-        'ALT': fields[4],
-        'QUAL': fields[5] if fields[5] != '.' else None,
-        'FILTER': fields[6],
-        'INFO': fields[7],
-    }
-
-    # Parse INFO field into dict
-    record['INFO_DICT'] = parse_info(fields[7])
-
-    # Parse genotype fields if present
-    if len(fields) >= 10:
-        record['FORMAT'] = fields[8]
-        record['SAMPLE'] = fields[9]
-        record['GENOTYPE'] = parse_genotype(fields[8], fields[9])
-
-    return record
-
+    try:
+        pos = int(fields[1])
+    except ValueError as exc:
+        raise ValueError("Invalid VCF POS") from exc
+    if pos < 1:
+        raise ValueError("VCF POS must be positive")
+    rec = dict(zip(('CHROM', 'POS', 'ID', 'REF', 'ALT', 'QUAL', 'FILTER', 'INFO'),
+                   (fields[0], pos, fields[2], fields[3], fields[4],
+                    None if fields[5] == '.' else fields[5], fields[6], fields[7])))
+    rec['INFO_DICT'] = parse_info(fields[7])
+    if len(fields) == 9:
+        raise ValueError("FORMAT column without samples")
+    if len(fields) > 9:
+        rec['FORMAT'] = fields[8]
+        rec['SAMPLE'] = fields[9]
+        rec['GENOTYPE'] = parse_genotype(fields[8], fields[9])
+        rec['GENOTYPES'] = [parse_genotype(fields[8], sample) for sample in fields[9:]]
+    return rec
 
 def parse_info(info_str: str) -> Dict[str, Any]:
     """Parse VCF INFO field into a dictionary.
@@ -143,69 +134,61 @@ def parse_gt_alleles(gt_str: str) -> List[int]:
 # Allele Frequency Extraction
 # ---------------------------------------------------------------------------
 
+def _validate_af(value: Any) -> float:
+    try:
+        af = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid AF: {value!r}") from exc
+    if not math.isfinite(af) or not 0.0 <= af <= 1.0:
+        raise ValueError(f"AF must be finite and between 0 and 1: {value!r}")
+    return af
+
+
 def extract_af_from_info(info_dict: Dict[str, Any]) -> Optional[float]:
-    """Extract allele frequency from VCF INFO field (AF tag)."""
+    """First ALT frequency; use annotate_vcf_record for other alleles."""
     af = info_dict.get('AF')
-    if af is not None:
-        if isinstance(af, list):
-            return af[0]  # First ALT allele frequency
-        return float(af)
-    return None
+    if isinstance(af, list):
+        af = af[0] if af else None
+    if af in (None, '.'):
+        return None
+    return _validate_af(af)
 
 
-def calculate_af_from_genotypes(records: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Calculate allele frequency from genotype (GT) fields across samples.
-
-    Returns dict with allele counts, frequencies, and genotype counts.
-    """
-    alt_count = 0
-    total_alleles = 0
-    genotype_counts = {'hom_ref': 0, 'het': 0, 'hom_alt': 0, 'missing': 0}
-
+def calculate_af_from_genotypes(records: List[Dict[str, Any]],
+                                alt_index: int = 1) -> Dict[str, Any]:
+    """Count called alleles for a selected ALT, excluding missing calls."""
+    if alt_index < 1:
+        raise ValueError("alt_index must be >= 1")
+    alt_count = total = 0
+    counts = {'hom_ref': 0, 'het': 0, 'hom_alt': 0, 'missing': 0}
     for rec in records:
-        gt = rec.get('GENOTYPE', {})
-        alleles = gt.get('alleles', [])
-        if not alleles:
-            genotype_counts['missing'] += 1
-            continue
-
+        alleles = rec.get('GENOTYPE', {}).get('alleles', [])
+        if not alleles or -1 in alleles:
+            counts['missing'] += 1
         for a in alleles:
-            if a < 0:
-                genotype_counts['missing'] += 1
-                continue
-            total_alleles += 1
-            if a > 0:
-                alt_count += 1
-
-        if len(alleles) == 2:
-            if alleles[0] == 0 and alleles[1] == 0:
-                genotype_counts['hom_ref'] += 1
-            elif alleles[0] > 0 and alleles[1] > 0:
-                genotype_counts['hom_alt'] += 1
-            elif alleles[0] != alleles[1]:
-                genotype_counts['het'] += 1
-
-    af = alt_count / total_alleles if total_alleles > 0 else 0.0
-
-    return {
-        'alt_count': alt_count,
-        'total_alleles': total_alleles,
-        'af': af,
-        'ref_freq': 1.0 - af,
-        'genotype_counts': genotype_counts,
-    }
-
+            if a >= 0:
+                total += 1
+                alt_count += (a == alt_index)
+        if len(alleles) == 2 and all(a in (0, alt_index) for a in alleles):
+            if alleles == [0, 0]:
+                counts['hom_ref'] += 1
+            elif alleles == [alt_index, alt_index]:
+                counts['hom_alt'] += 1
+            else:
+                counts['het'] += 1
+    af = alt_count / total if total else 0.0
+    return {'alt_count': alt_count, 'total_alleles': total,
+            'af': af, 'ref_freq': 1.0 - af, 'genotype_counts': counts}
 
 def calculate_af_from_ad(info_dict: Dict[str, Any],
-                          genotype: Dict[str, Any]) -> Optional[float]:
-    """Calculate allele frequency from AD (allelic depth) field."""
+                         genotype: Dict[str, Any], alt_index: int = 1) -> Optional[float]:
+    """Compute read-depth fraction, which is not population AF."""
     ad = genotype.get('AD')
-    if ad and isinstance(ad, list) and len(ad) >= 2:
-        total = sum(ad)
-        if total > 0:
-            return ad[1] / total  # ALT depth / total depth
-    return None
-
+    if (not isinstance(ad, list) or len(ad) <= alt_index
+            or any(not isinstance(x, int) or x < 0 for x in ad)):
+        return None
+    total = sum(ad)
+    return ad[alt_index] / total if total else None
 
 # ---------------------------------------------------------------------------
 # Population Genetics Metrics
@@ -403,6 +386,7 @@ def classify_variant_by_af(af: float) -> Dict[str, Any]:
         Rare:       0.1% <= AF < 1%
         Ultra-rare: AF < 0.1%
     """
+    af = _validate_af(af)
     if af >= 0.01:
         category = 'common'
         description = 'Common variant / polymorphism (AF >= 1%)'
@@ -450,102 +434,98 @@ def compare_to_gnomad(af: float, gnomad_af: Optional[float] = None) -> Dict[str,
 # Full VCF Annotation
 # ---------------------------------------------------------------------------
 
-def annotate_vcf_record(record: Dict[str, Any]) -> Dict[str, Any]:
-    """Annotate a single VCF record with AF and population genetics metrics."""
-    info = record.get('INFO_DICT', {})
-    genotype = record.get('GENOTYPE', {})
+def annotate_vcf_record(record: Dict[str, Any], alt_index: int = 1) -> Dict[str, Any]:
+    """Annotate the selected ALT, retaining frequency provenance.
 
-    # Try to get AF from INFO first
-    af = extract_af_from_info(info)
-
-    # Fall back to AD field
-    if af is None and genotype:
-        af = calculate_af_from_ad(info, genotype)
-
-    # Fall back to GT field
-    if af is None and genotype:
-        alleles = genotype.get('alleles', [])
-        if alleles:
-            alt_count = sum(1 for a in alleles if a > 0)
-            af = alt_count / len(alleles) if alleles else 0.0
-
-    if af is None:
-        af = 0.0
-
-    # Classify
-    classification = classify_variant_by_af(af)
-
-    # HWE (from genotype if available)
-    hwe_result = None
-    if genotype and genotype.get('alleles'):
-        alleles = genotype['alleles']
-        if len(alleles) == 2:
-            hom_ref = 1 if alleles == [0, 0] else 0
-            het = 1 if len(set(alleles)) > 1 and all(a >= 0 for a in alleles) else 0
-            hom_alt = 1 if alleles == [1, 1] else 0
-            hwe_result = chi_square_hwe(hom_ref, het, hom_alt, af)
-
-    result = {
-        'CHROM': record.get('CHROM'),
-        'POS': record.get('POS'),
-        'REF': record.get('REF'),
-        'ALT': record.get('ALT'),
-        'AF': round(af, 6),
-        'category': classification['category'],
-        'description': classification['description'],
-    }
-
-    if hwe_result:
-        result['hwe_chi_square'] = hwe_result['chi_square']
-        result['hwe_p_value'] = hwe_result['p_value']
-        result['in_hwe'] = hwe_result['in_hwe']
-
+    INFO/AF > called sample GT > first sample AD depth fraction. A missing
+    frequency remains unknown, never an invented zero.
+    """
+    alts = str(record.get('ALT', '')).split(',')
+    if not 1 <= alt_index <= len(alts):
+        raise ValueError("ALT index out of range")
+    info_af = record.get('INFO_DICT', {}).get('AF')
+    if isinstance(info_af, list):
+        if len(info_af) != len(alts):
+            raise ValueError("INFO AF count must match number of ALT alleles")
+        info_af = info_af[alt_index - 1]
+    elif len(alts) > 1 and info_af not in (None, '.'):
+        raise ValueError("Multiallelic INFO AF must have one value per ALT")
+    gts = record.get('GENOTYPES')
+    if gts is None:
+        gts = [record['GENOTYPE']] if record.get('GENOTYPE') else []
+    af, source = None, 'unavailable'
+    if info_af not in (None, '.'):
+        af, source = _validate_af(info_af), 'INFO/AF'
+    if af is None and gts:
+        counts = calculate_af_from_genotypes(
+            [{'GENOTYPE': gt} for gt in gts], alt_index)
+        if counts['total_alleles']:
+            af, source = counts['af'], 'GT'
+    if af is None and gts:
+        af = calculate_af_from_ad({}, gts[0], alt_index)
+        if af is not None:
+            source = 'AD read fraction'
+    cl = classify_variant_by_af(af) if af is not None else {
+        'category': 'unknown', 'description': 'No frequency available'}
+    result = {'CHROM': record.get('CHROM'), 'POS': record.get('POS'),
+              'REF': record.get('REF'), 'ALT': alts[alt_index - 1],
+              'AF': round(af, 6) if af is not None else None,
+              'af_source': source, 'category': cl['category'],
+              'description': cl['description']}
+    # HWE requires multiple complete diploid biallelic genotypes; small
+    # expected groups invalidate the chi-square approximation.
+    if len(alts) == 1 and gts:
+        counts = calculate_af_from_genotypes([{'GENOTYPE': gt} for gt in gts])
+        c = counts['genotype_counts']
+        n = c['hom_ref'] + c['het'] + c['hom_alt']
+        if n >= 10 and c['missing'] == 0 and counts['total_alleles'] == 2*n:
+            hw = hardy_weinberg_expected(counts['af'])
+            if min(hw['p_squared'], hw['two_pq'], hw['q_squared']) * n >= 5:
+                hwe = chi_square_hwe(c['hom_ref'], c['het'], c['hom_alt'])
+                result.update(hwe_chi_square=hwe['chi_square'],
+                              hwe_p_value=hwe['p_value'], in_hwe=hwe['in_hwe'])
     return result
 
-
 def _validate_filepath(filepath: str) -> str:
-    """Validate filepath for path traversal and null byte injection."""
+    """Reject obvious lexical traversal; this is not an I/O sandbox."""
+    filepath = os.fspath(filepath)
     if not filepath:
         raise ValueError("Filepath must not be empty")
     if '\x00' in filepath:
         raise ValueError("Filepath contains null bytes")
-    # Resolve to absolute path and check for traversal attempts
-    normalized = os.path.normpath(filepath)
-    if '..' in normalized.split(os.sep):
+    if '..' in filepath.replace('\\', '/').split('/'):
         raise ValueError(f"Path traversal detected in: {filepath}")
-    return normalized
-
+    return os.path.normpath(filepath)
 
 def parse_vcf_file(filepath: str) -> List[Dict[str, Any]]:
-    """Parse a VCF file and return list of record dicts."""
+    """Read plain or gzip-compressed VCF; preserve line errors."""
+    import gzip
     filepath = _validate_filepath(filepath)
+    opener = gzip.open if filepath.endswith('.gz') else open
     records = []
-    with open(filepath, 'r', encoding='utf-8') as f:
-        for line in f:
-            if line.startswith('#'):
-                continue
-            rec = parse_vcf_line(line)
-            if rec:
-                records.append(rec)
+    with opener(filepath, 'rt', encoding='utf-8-sig') as stream:
+        for lineno, line in enumerate(stream, 1):
+            try:
+                record = parse_vcf_line(line)
+            except ValueError as exc:
+                raise ValueError(f"VCF line {lineno}: {exc}") from exc
+            if record:
+                records.append(record)
     return records
 
-
 def annotate_vcf_file(input_path: str, output_path: str) -> List[Dict[str, Any]]:
-    """Annotate an entire VCF file and write results to CSV."""
-    input_path = _validate_filepath(input_path)
-    output_path = _validate_filepath(output_path)
+    """Write one CSV row per ALT, including headers for empty files."""
     records = parse_vcf_file(input_path)
-    annotations = [annotate_vcf_record(r) for r in records]
-
-    if annotations:
-        fieldnames = list(annotations[0].keys())
-        with open(output_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=fieldnames)
-            writer.writeheader()
-            writer.writerows(annotations)
-
+    annotations = [annotate_vcf_record(rec, i)
+                   for rec in records
+                   for i in range(1, len(rec['ALT'].split(',')) + 1)]
+    fields = ['CHROM', 'POS', 'REF', 'ALT', 'AF', 'af_source', 'category',
+              'description', 'hwe_chi_square', 'hwe_p_value', 'in_hwe']
+    with open(_validate_filepath(output_path), 'w', newline='', encoding='utf-8') as out:
+        writer = csv.DictWriter(out, fieldnames=fields)
+        writer.writeheader()
+        writer.writerows(annotations)
     return annotations
-
 
 def process_batch(input_csv: str, output_csv: str) -> List[Dict[str, Any]]:
     """Process a CSV of variant data with AF values.
@@ -559,7 +539,7 @@ def process_batch(input_csv: str, output_csv: str) -> List[Dict[str, Any]]:
         fieldnames = list(reader.fieldnames or [])
         rows = list(reader)
 
-    out_fields = fieldnames + ['af_category', 'hwe_p_value', 'in_hwe']
+    out_fields = list(dict.fromkeys(fieldnames + ['af_category']))
     out_rows = []
 
     for r in rows:
@@ -578,10 +558,7 @@ def process_batch(input_csv: str, output_csv: str) -> List[Dict[str, Any]]:
             info = parse_info(r['INFO'])
             af = extract_af_from_info(info)
 
-        if af is None:
-            af = 0.0
-
-        classification = classify_variant_by_af(af)
+        classification = classify_variant_by_af(af) if af is not None else {'category': 'unknown'}
         row_dict = dict(r)
         row_dict['af_category'] = classification['category']
         out_rows.append(row_dict)
